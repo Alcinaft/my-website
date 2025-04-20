@@ -1,0 +1,1498 @@
+# main.py
+
+import streamlit as st
+from datetime import date
+from database import (init_db,add_patient,add_doctor_action,get_doctor_actions,add_disease,get_all_patients,
+                      get_patient_diseases,get_all_diseases,assign_disease_to_patient,add_monitoring_data,
+                      check_monitoring_data,get_monitoring_data,notify_doctor,add_health_indicator,get_all_health_indicators,
+                      delete_patient,delete_disease,delete_health_indicator,add_monitoring_schedule,get_planned_monitoring,
+                      mark_monitoring_as_completed,add_voice_monitoring,generate_doctor_recommendations,analyze_risks,
+                      generate_analytics_report,add_question,get_all_questions,update_question,delete_question,
+                      update_data_retention_period,get_data_retention_period,delete_old_records,
+                      get_patient_health_indicators)
+#from voice_bot import speech_to_text
+from func import get_patient_report,get_disease_report,get_indicator_report
+
+if 'db_initialized' not in st.session_state:
+    st.session_state.db_initialized = True
+    init_db()
+
+st.title("Цифровой двойник пациента")
+
+# Добавление пациента
+st.header("Добавить пациента")
+name = st.text_input("Имя пациента")
+contact_info = st.text_input("Контакты")
+if st.button("Добавить"):
+    add_patient(name, contact_info)
+    st.success("Пациент добавлен успешно!")
+
+# Просмотр всех пациентов и их болезней
+st.header("Все пациенты")
+patients = get_all_patients()
+
+if patients:
+    # Создаем пустой список для хранения данных
+    patient_data = []
+
+    for patient in patients:
+        # Получаем болезни пациента
+        diseases = get_patient_diseases(patient["ID"])
+        if diseases:
+            # Собираем названия болезней через запятую
+            disease_names = ", ".join([d["Name"] for d in diseases])
+        else:
+            disease_names = "Нет болезней"
+
+        # Добавляем данные пациента
+        patient_data.append({
+            "ID пациента": patient["ID"],
+            "Имя пациента": patient["Name"],
+            "Контакты": patient["Contact Info"],
+            "Болезни": disease_names
+        })
+
+    # Отображаем данные в виде таблицы
+    st.dataframe(patient_data)
+else:
+    st.write("Нет пациентов")
+
+# Удаление пациента
+st.header("Удалить пациента")
+patients = get_all_patients()
+
+if patients:
+    # Выбор пациента
+    selected_patient = st.selectbox(
+        "Выберите пользователя",
+        [f"{p['ID']} - {p['Name']}" for p in patients]
+    )
+    patient_id = int(selected_patient.split(" - ")[0])
+    # Кнопка для удаления
+    if st.button("Удалить пользователя"):
+        st.session_state.confirm_delete_patient = True
+    if st.session_state.get('delete_patient'):
+        success=delete_patient(patient_id)
+        if success:
+            st.success("Пользователь удален")
+        else:
+            st.error('Ошибка')
+        st.session_state.confirm_delete_patient = False
+    if st.session_state.get('close_patient'):
+        st.session_state.confirm_delete_patient = False
+    if st.session_state.get("confirm_delete_patient", False):
+        st.warning("Ты точно хочешь удалить пользователя🤨")
+        yes_button=st.button("Да",key='delete_patient')
+        no_button=st.button("Нет",key='close_patient')
+else:
+    st.write("Нет пользователей")
+
+# Добавление заболевания
+st.header("Добавить болезни")
+disease_name = st.text_input("Имя болезни")
+disease_description = st.text_area("Описание болезни")
+if st.button("Добавить",key='add_disease'):
+    add_disease(disease_name, disease_description)
+    st.success("Болезнь добавлена успешно!")
+
+# Просмотр всех заболеваний
+st.header("Все болезни")
+diseases = get_all_diseases()
+if diseases:
+    # Преобразуем список словарей в DataFrame
+    st.dataframe(diseases)
+else:
+    st.write("Нет болезней")
+
+# Удаление заболевания
+st.header("Удалить болезнь")
+diseases = get_all_diseases()
+
+if diseases:
+    # Выбор заболевания
+    selected_disease = st.selectbox(
+        "Выберите болезнь",
+        [f"{d['ID']} - {d['Name']}" for d in diseases]
+    )
+    disease_id = int(selected_disease.split(" - ")[0])
+    # Кнопка для удаления
+    if st.button("Удалить болезнь"):
+        st.session_state.confirm_delete_disease = True
+    if st.session_state.get('delete_disease'):
+        success =delete_disease(disease_id)
+        if success:
+            st.success("Болезнь удалена")
+        else:
+            st.error("Ошибка")
+        st.session_state.confirm_delete_disease = False
+    if st.session_state.get('close_disease'):
+        st.session_state.confirm_delete_disease=False
+    if st.session_state.get("confirm_delete_disease", False):
+        st.warning("Ты точно хочешь удалить болезнь🤨")
+        yes_button=st.button("Да",key='delete_disease')
+        no_button=st.button("Нет",key='close_disease')
+else:
+    st.write("Нет болезней")
+
+# Привязка заболевания к пациенту
+st.header("Добавить болезнь к пациенту")
+patients = get_all_patients()
+diseases = get_all_diseases()
+if patients and diseases:
+    # Выбор пациента
+    selected_patient = st.selectbox(
+        "Выбирите пациента",
+        [f"{p['ID']} - {p['Name']}" for p in patients]
+    )
+    patient_id = int(selected_patient.split(" - ")[0])
+
+    # Выбор заболевания
+    selected_disease = st.selectbox(
+        "Выбирите болезнь",
+        [f"{d['ID']} - {d['Name']}" for d in diseases]
+    )
+    disease_id = int(selected_disease.split(" - ")[0])
+
+    # Кнопка для привязки
+    if st.button("Добавить",key='add_diasese_to_p'):
+        success=assign_disease_to_patient(patient_id, disease_id)
+        if success:
+            st.success("Действие выполнено успешно!")
+        else:
+            st.error("Такая болезнь к пациенту уже записана!")
+else:
+    st.write("Нет пациентов или болезней.")
+
+# Добавление нового показателя здоровья
+st.header("Добавить показатель здоровья для болезни")
+diseases = get_all_diseases()
+
+if diseases:
+    # Выбор заболевания
+    selected_disease = st.selectbox(
+        "Выберите болезнь",
+        [f"{d['ID']} - {d['Name']}" for d in diseases],key='add_healthI'
+    )
+    disease_id = int(selected_disease.split(" - ")[0])
+
+    # Ввод данных о показателе
+    name = st.text_input("Показатель")
+    reference_min = st.number_input("Минимальное значение", step=1)
+    reference_max = st.number_input("Максимальное значение", step=1)
+
+    # Кнопка для добавления
+    if st.button("Добавить",key='add_health_in'):
+        success = add_health_indicator(disease_id, name, reference_min, reference_max)
+        if success:
+            st.success("Показатель успешно добавлен!")
+        else:
+            st.error("Ошибка")
+else:
+    st.write("Нет болезней")
+
+st.header("Все показатели здоровья для болезней")
+indicators = get_all_health_indicators()
+
+if indicators:
+    st.dataframe(indicators)
+else:
+    st.write("Нет показателей")
+
+# Удаление показателя здоровья
+st.header("Удалить показатель здоровья")
+indicators = get_all_health_indicators()
+
+if indicators:
+    # Выбор показателя здоровья
+    selected_indicator = st.selectbox(
+        "Выберите показатель здоровья",
+        [f"{i['ID']} - {i['Name']}" for i in indicators]
+    )
+    indicator_id = int(selected_indicator.split(" - ")[0])
+
+    # Кнопка для удаления
+    if st.button("Удаление показателя здоровья"):
+        st.session_state.confirm_delete_indicator = True
+    if st.session_state.get('delete_indicator'):
+        success = delete_health_indicator(indicator_id)
+        if success:
+            st.success("Показатель удален")
+        else:
+            st.error("Ошибка")
+        st.session_state.confirm_delete_indicator=False
+    if st.session_state.get('close_indicator'):
+        st.session_state.confirm_delete_indicator = False
+    if st.session_state.get("confirm_delete_indicator", False):
+        st.warning("Ты точно хочешь удалить показатель здоровья🤨")
+        yes_button=st.button("Да",key='delete_indicator')
+        no_button=st.button("Нет",key='close_indicator')
+else:
+    st.write("Нет показателей здоровья")
+
+# Добавление данных мониторинга
+st.header("Добавить мониторинг")
+patients = get_all_patients()
+
+if patients and indicators:
+    # Выбор пациента
+    selected_patient = st.selectbox(
+        "Выберите пациента",
+        [f"{p['ID']} - {p['Name']}" for p in patients],key='add_monData'
+    )
+    patient_id = int(selected_patient.split(" - ")[0])
+    indicators = get_patient_health_indicators(patient_id)
+    # Выбор показателя здоровья
+    selected_indicator = st.selectbox(
+        "Выберите показатель здоровья для болезни",
+        [f"{i['ID']} - {i['Name']}" for i in indicators]
+    )
+    indicator_id = int(selected_indicator.split(" - ")[0])
+
+    # Ввод значения
+    value = st.number_input("Введите значение показателя", step=1)
+
+    # Кнопка для добавления данных
+    if st.button("Добавить",key='add_mon'):
+        success = add_monitoring_data(patient_id, indicator_id, value)
+        if success:
+            is_normal = check_monitoring_data(patient_id, indicator_id, value)
+            if is_normal:
+                st.success("Мониторинг добавлен успешно. Все хорошо!")
+            else:
+                notify_doctor(patient_id, indicator_id, value)
+                st.error("Мониторинг добавлен успешно.Есть проблемы!")
+        else:
+            st.error("Ошибка")
+else:
+    st.write("Нет пациентов или показателей здоровья")
+
+# Просмотр результатов мониторинга
+st.header("Мониторинги")
+patients = get_all_patients()
+
+if patients:
+    # Выбор пациента
+    selected_patient = st.selectbox(
+        "Выберите пациента",
+        [f"{p['ID']} - {p['Name']}" for p in patients],key='view_monResults'
+    )
+    patient_id = int(selected_patient.split(" - ")[0])
+
+    # Получение данных мониторинга
+    monitoring_data = get_monitoring_data(patient_id)
+    if monitoring_data:
+        st.dataframe(monitoring_data)
+    else:
+        st.write("Нет мониторингов для этого пациента")
+else:
+    st.write("Нет пациентов")
+
+# Настройка периодичности мониторинга
+st.header("Set Monitoring Frequency")
+patients = get_all_patients()
+indicators = get_all_health_indicators()
+
+if patients and indicators:
+    # Выбор пациента
+    selected_patient = st.selectbox(
+        "Select Patient",
+        [f"{p['ID']} - {p['Name']}" for p in patients]
+    )
+    patient_id = int(selected_patient.split(" - ")[0])
+
+    # Выбор показателя здоровья
+    selected_indicator = st.selectbox(
+        "Select Health Indicator",
+        [f"{i['ID']} - {i['Name']}" for i in indicators]
+    )
+    indicator_id = int(selected_indicator.split(" - ")[0])
+
+    # Настройка частоты
+    frequency = st.selectbox("Frequency", ["daily", "weekly", "custom"])
+    if frequency == "custom":
+        interval_days = st.number_input("Interval (Days)", min_value=1, value=1)
+    else:
+        interval_days = 1 if frequency == "daily" else 7
+
+    # Даты начала и окончания
+    start_date = st.date_input("Start Date")
+    end_date = st.date_input("End Date")
+
+    # Кнопка для добавления плана
+    if st.button("Set Monitoring Frequency"):
+        success = add_monitoring_schedule(patient_id, indicator_id, frequency, interval_days, start_date, end_date, start_date)
+        if success:
+            st.success("Monitoring frequency set successfully!")
+        else:
+            st.error("Failed to set monitoring frequency.")
+else:
+    st.write("No patients or health indicators available.")
+
+# Отображение планируемых мониторингов
+st.header("Planned Monitoring")
+planned_monitoring = get_planned_monitoring()
+
+if planned_monitoring:
+    st.dataframe(planned_monitoring)
+else:
+    st.write("No planned monitoring available.")
+
+# Завершение мониторинга
+st.header("Complete Monitoring")
+planned_monitoring = get_planned_monitoring()
+
+if planned_monitoring:
+    # Выбор мониторинга для завершения
+    selected_monitoring = st.selectbox(
+        "Select Monitoring to Complete",
+        [f"{m['ID']} - {m['Patient Name']} - {m['Indicator Name']}" for m in planned_monitoring if m["Status"] == "Planned"]
+    )
+    if selected_monitoring:
+        schedule_id = int(selected_monitoring.split(" - ")[0])
+
+    # Кнопка для завершения
+        if st.button("Complete Monitoring"):
+            success = mark_monitoring_as_completed(schedule_id)
+            if success:
+                st.success("Monitoring marked as completed!")
+            else:
+                st.error("Failed to mark monitoring as completed.")
+else:
+    st.write("No planned monitoring available to complete.")
+
+# Действия врача
+st.header("Действия врача")
+patients = get_all_patients()
+
+if patients:
+    # Выбор пациента
+    selected_patient = st.selectbox(
+        "Выберите пациента",
+        [f"{p['ID']} - {p['Name']}" for p in patients],key='doc_actions'
+    )
+    patient_id = int(selected_patient.split(" - ")[0])
+
+    # Выбор действия
+    action = st.selectbox(
+        "Выберите действие",
+        ["Schedule Consultation", "Urgent Contact", "No Action Needed"]
+    )
+
+    # Кнопка для записи действия
+    if st.button("Записать"):
+        success = add_doctor_action(patient_id, action)
+        if success:
+            st.success("Действие записано успешно")
+        else:
+            st.error("Ошибка")
+
+    # Просмотр исторических действий врача
+    st.subheader("История действий врача")
+    actions = get_doctor_actions(patient_id)
+    if actions:
+        st.dataframe(actions)
+    else:
+        st.write("Нет действий")
+else:
+    st.write("Нет пациентов")
+
+# Формирование отчетности
+st.header("Отчет о болезни")
+disease_report = get_disease_report()
+
+if disease_report:
+    st.dataframe(disease_report)
+else:
+    st.write("No data available for disease report.")
+
+# Отчет по пациентам
+st.header("Report by Patients")
+patient_report = get_patient_report()
+
+if patient_report:
+    st.dataframe(patient_report)
+else:
+    st.write("No data available for patient report.")
+
+# Отчет по показателям здоровья
+st.header("Report by Health Indicators")
+indicator_report = get_indicator_report()
+
+if indicator_report:
+    st.dataframe(indicator_report)
+else:
+    st.write("No data available for health indicators report.")
+
+# Сбор данных через голосового робота
+st.header("Voice Monitoring Data Collection")
+patients = get_all_patients()
+
+if patients:
+    # Выбор пациента
+    selected_patient = st.selectbox(
+        "Select Patient",
+        [f"{p['ID']} - {p['Name']}" for p in patients],key='voice_coll_p'
+    )
+    patient_id = int(selected_patient.split(" - ")[0])
+    indicators = get_patient_health_indicators(patient_id)
+    if indicators:
+        # Выбор показателя здоровья
+        selected_indicator = st.selectbox(
+            "Select Health Indicator",
+            [f"{i['ID']} - {i['Name']}" for i in indicators],key='voice_coll_i'
+        )
+        indicator_id = int(selected_indicator.split(" - ")[0])
+
+        # Ввод текстового ответа пациента
+        raw_response = st.text_area("Patient's Response (Text)", placeholder="Enter patient's response here")
+
+        # Пример парсинга текста (можно заменить на более сложный алгоритм)
+        try:
+            parsed_value = float(raw_response.split(":")[-1].strip())  # Простой пример парсинга
+        except ValueError:
+            parsed_value = None
+
+        # Кнопка для добавления данных
+        if st.button("Add Voice Monitoring Data"):
+            if parsed_value is not None:
+                success = add_voice_monitoring(patient_id, indicator_id, raw_response, parsed_value)
+                if success:
+                    st.success("Voice monitoring data added successfully!")
+                else:
+                    st.error("Failed to add voice monitoring data.")
+            else:
+                st.error("Invalid response format. Please ensure the response contains a numeric value.")
+    else:
+        st.write("No health indicators available for this patient.")
+else:
+    st.write("No patients or health indicators available.")
+
+# Рекомендации для врача
+st.header("Doctor Recommendations")
+patients = get_all_patients()
+if patients:
+    selected_patient = st.selectbox(
+        "Select Patient",
+        [f"{p['ID']} - {p['Name']}" for p in get_all_patients()],key='doctor_rec'
+    )
+    patient_id = int(selected_patient.split(" - ")[0])
+
+    if st.button("Generate Recommendations"):
+        recommendations = generate_doctor_recommendations(patient_id)
+        if recommendations:
+            st.subheader("Recommendations:")
+            for rec in recommendations:
+                st.write(f"- {rec}")
+        else:
+            st.write("No recommendations available.")
+else:
+    st.write("No patients available.")
+
+# Анализ рисков
+st.header("Risk Analysis")
+selected_patient = st.selectbox(
+    "Select Patient",
+    [f"{p['ID']} - {p['Name']}" for p in get_all_patients()],key='risk_a'
+)
+patient_id = int(selected_patient.split(" - ")[0])
+
+if st.button("Analyze Risks"):
+    risks = analyze_risks(patient_id)
+    if risks:
+        st.subheader("Risks Detected:")
+        for risk in risks:
+            st.write(f"- {risk}")
+    else:
+        st.write("No risks detected.")
+
+# Аналитическая отчетность
+st.header("Analytics Report")
+report = generate_analytics_report()
+
+if report:
+    st.dataframe(report)
+else:
+    st.write("No data available for analytics report.")
+
+# Добавление нового вопроса
+st.header("Добавить вопрос для робота")
+indicators = get_all_health_indicators()
+
+if indicators:
+    # Выбор показателя здоровья
+    selected_indicator = st.selectbox(
+        "Select Health Indicator",
+        [f"{i['ID']} - {i['Name']}" for i in indicators],key='add_questions'
+    )
+    indicator_id = int(selected_indicator.split(" - ")[0])
+
+    # Ввод текста вопроса
+    question_text = st.text_area("Question Text", placeholder="Enter the question here")
+
+    # Ввод примера ответа
+    example_response = st.text_input("Example Response", placeholder="Enter an example response here")
+
+    # Кнопка для добавления вопроса
+    if st.button("Add Question"):
+        if question_text and example_response:
+            success = add_question(indicator_id, question_text, example_response)
+            if success:
+                st.success("Question added successfully!")
+            else:
+                st.error("Failed to add question.")
+        else:
+            st.error("Please fill in all fields.")
+else:
+    st.write("No health indicators available.")
+
+# Просмотр и управление вопросами
+st.header("Просмотр и изменение вопросов для робота")
+questions = get_all_questions()
+
+if questions:
+    st.dataframe(questions)
+
+    # Выбор вопроса для редактирования
+    selected_question = st.selectbox(
+        "Select Question to Edit",
+        [f"{q['ID']} - {q['Question Text']}" for q in questions],key='manage_q'
+    )
+    question_id = int(selected_question.split(" - ")[0])
+
+    # Новый текст вопроса
+    new_question_text = st.text_area("New Question Text", placeholder="Enter new question text here")
+
+    # Новый пример ответа
+    new_example_response = st.text_input("New Example Response", placeholder="Enter new example response here")
+
+    # Кнопка для редактирования
+    if st.button("Update Question"):
+        if new_question_text and new_example_response:
+            success = update_question(question_id, new_question_text, new_example_response)
+            if success:
+                st.success("Question updated successfully!")
+            else:
+                st.error("Failed to update question.")
+        else:
+            st.error("Please fill in all fields.")
+
+    # Кнопка для удаления
+    if st.button("Delete Question"):
+        success = delete_question(question_id)
+        if success:
+            st.success("Question deleted successfully!")
+        else:
+            st.error("Failed to delete question.")
+else:
+    st.write("No questions available.")
+
+# Настройка периода хранения записей
+st.header("Data Retention Settings")
+current_period = get_data_retention_period()
+
+# Ввод нового периода хранения
+new_period = st.number_input(
+    "Set Data Retention Period (Days)",
+    min_value=1,
+    max_value=365,
+    value=current_period
+)
+
+# Кнопка для сохранения настроек
+if st.button("Save Settings"):
+    success = update_data_retention_period(new_period)
+    if success:
+        st.success(f"Data retention period updated to {new_period} days.")
+    else:
+        st.error("Failed to update data retention period.")
+
+# Удаление старых записей
+st.header("Delete Old Records")
+if st.button("Delete Old Records"):
+    success = delete_old_records()
+    if success:
+        st.success("Old records deleted successfully.")
+    else:
+        st.error("Failed to delete old records.")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+database.py
+import sqlite3
+import logging
+import streamlit as st
+from datetime import timedelta,datetime
+
+logging.basicConfig(level=logging.DEBUG)
+def get_connection():
+    return sqlite3.connect('patients.db', check_same_thread=False)
+conn = get_connection()
+c = conn.cursor()
+def init_db():
+    with conn:
+        # Создание таблиц
+        c.execute('''
+        CREATE TABLE IF NOT EXISTS Patients (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            contact_info TEXT,
+            monitoring_frequency INTEGER
+        )
+        ''')
+        c.execute('''
+        CREATE TABLE IF NOT EXISTS Diseases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT
+        )
+        ''')
+        c.execute('''
+        CREATE TABLE IF NOT EXISTS PatientDiseases (
+            patient_id INTEGER,
+            disease_id INTEGER,
+            FOREIGN KEY (patient_id) REFERENCES Patients(id),
+            FOREIGN KEY (disease_id) REFERENCES Diseases(id),
+            UNIQUE (patient_id, disease_id)
+        )
+        ''')
+        c.execute('''
+        CREATE TABLE IF NOT EXISTS HealthIndicators (
+            id INTEGER PRIMARY KEY,
+            disease_id INTEGER,
+            name TEXT NOT NULL UNIQUE,
+            reference_min REAL,
+            reference_max REAL,
+            FOREIGN KEY (disease_id) REFERENCES Diseases(id)
+        )
+        ''')
+
+        c.execute('''
+        CREATE TABLE IF NOT EXISTS Monitoring (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            patient_id INTEGER,
+            indicator_id INTEGER,
+            value REAL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (patient_id) REFERENCES Patients(id),
+            FOREIGN KEY (indicator_id) REFERENCES HealthIndicators(id)
+        )
+        ''')
+
+        c.execute('''
+        CREATE TABLE IF NOT EXISTS DoctorActions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            patient_id INTEGER,
+            action TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (patient_id) REFERENCES Patients(id)
+        )
+        ''')
+
+        c.execute('''
+        CREATE TABLE IF NOT EXISTS MonitoringSchedule (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            patient_id INTEGER,
+            indicator_id INTEGER,
+            frequency TEXT,  -- Например: "daily", "weekly"
+            interval_days INTEGER,  -- Интервал между сборами данных (в днях)
+            start_date DATE,
+            end_date DATE,
+            next_monitoring_date DATE,  -- Дата следующего мониторинга
+            status TEXT DEFAULT 'Planned',  -- Новый столбец для статуса
+            FOREIGN KEY (patient_id) REFERENCES Patients(id),
+            FOREIGN KEY (indicator_id) REFERENCES HealthIndicators(id)
+        )
+        ''')
+
+        c.execute('''
+        CREATE TABLE IF NOT EXISTS VoiceMonitoring (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            patient_id INTEGER,
+            indicator_id INTEGER,
+            raw_response TEXT,  -- Исходный текстовый ответ пациента
+            parsed_value REAL,  -- Преобразованное числовое значение
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (patient_id) REFERENCES Patients(id),
+            FOREIGN KEY (indicator_id) REFERENCES HealthIndicators(id)
+        )
+        ''')
+
+        c.execute('''
+        CREATE TABLE IF NOT EXISTS Questions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            indicator_id INTEGER,  -- Связь с показателем здоровья
+            question_text TEXT,    -- Текст вопроса
+            example_response TEXT, -- Пример ответа (для помощи пациенту)
+            FOREIGN KEY (indicator_id) REFERENCES HealthIndicators(id)
+        )
+        ''')
+
+        c.execute('''
+        CREATE TABLE IF NOT EXISTS Settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            setting_name TEXT UNIQUE,  -- Название настройки
+            setting_value TEXT         -- Значение настройки
+        )
+        ''')
+
+        conn.commit()
+
+# Получение всех ID пациентов
+def get_all_patient_ids():
+    with conn:
+        c.execute("SELECT id FROM Patients")
+        rows = c.fetchall()
+        return [row[0] for row in rows]
+
+def get_all_disease_ids():
+    with conn:
+        c.execute("SELECT id FROM PatientDiseases")
+        rows = c.fetchall()
+        return [row[0] for row in rows]
+
+def get_all_health_i_ids():
+    with conn:
+        c.execute("SELECT id FROM HealthIndicators")
+        rows = c.fetchall()
+        return [row[0] for row in rows]
+
+def add_patient(name, contact_info):
+    with conn:
+        existing_ids=get_all_patient_ids()
+        # Находим минимальный доступный ID
+        if not existing_ids:
+            next_id = 1  # Если таблица пустая
+        else:
+            # Сортируем ID
+            existing_ids.sort()
+            # Ищем первый "дырявый" ID
+            for i in range(1, max(existing_ids) + 2):
+                if i not in existing_ids:
+                    next_id = i
+                    break
+            else:
+                next_id = max(existing_ids) + 1
+        c.execute("INSERT INTO Patients (id, name, contact_info) VALUES (?, ?, ?)", (next_id, name, contact_info))
+        conn.commit()
+
+# Добавление данных мониторинга
+def add_monitoring_data(patient_id, indicator_id, value):
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO Monitoring (patient_id, indicator_id, value, timestamp)
+                VALUES (?, ?, ?, datetime('now','localtime'))
+            """, (patient_id, indicator_id, value,))
+            conn.commit()
+            logging.debug(f"Monitoring data added: Patient {patient_id}, Indicator {indicator_id}, Value {value}")
+        return True
+    except Exception as e:
+        logging.error(f"Error adding monitoring data: {e}")
+        return False
+
+# Проверка отклонений от нормы
+def check_monitoring_data(patient_id, indicator_id, value):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        # Получаем референсные значения для показателя
+        cursor.execute("""
+            SELECT reference_min, reference_max
+            FROM HealthIndicators
+            WHERE id = ?
+        """, (indicator_id,))
+        result = cursor.fetchone()
+        if not result:
+            logging.error(f"No reference values found for indicator {indicator_id}")
+            return None
+
+        reference_min, reference_max = result
+        # Проверяем, находится ли значение в пределах нормы
+        if value < reference_min or value > reference_max:
+            logging.warning(f"Abnormal value detected: Patient {patient_id}, Indicator {indicator_id}, Value {value}")
+            return False  # Значение вне нормы
+        return True  # Значение в норме
+
+def get_monitoring_data(patient_id):
+    with conn:
+        c.execute("""
+        SELECT m.id,h.name, m.value, m.timestamp 
+        FROM Monitoring m
+        JOIN HealthIndicators h ON m.indicator_id = h.id
+        WHERE m.patient_id = ?
+        """, (patient_id,))
+        rows = c.fetchall()
+        # Преобразуем результат в список словарей
+        data = [{"ID": row[0], "Indicator": row[1], "Value": row[2], "Timestamp": row[3]} for row in rows]
+        return data
+
+# Добавление нового показателя здоровья
+def add_health_indicator(disease_id, name, reference_min, reference_max):
+    try:
+        if reference_min >= reference_max:
+            st.error("Reference Min must be less than Reference Max.")
+            return
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            existing_ids = get_all_health_i_ids()
+            # Находим минимальный доступный ID
+            if not existing_ids:
+                next_id = 1  # Если таблица пустая
+            else:
+                # Сортируем ID
+                existing_ids.sort()
+                # Ищем первый "дырявый" ID
+                for i in range(1, max(existing_ids) + 2):
+                    if i not in existing_ids:
+                        next_id = i
+                        break
+                else:
+                    next_id = max(existing_ids) + 1
+            # Проверяем уникальность имени показателя для конкретного заболевания
+            cursor.execute("""
+                INSERT INTO HealthIndicators (id,disease_id, name, reference_min, reference_max)
+                VALUES (?, ?, ?, ?, ?)
+            """, (next_id,disease_id, name, reference_min, reference_max,))
+
+            conn.commit()
+            logging.debug(f"Health indicator added: {name}, Disease ID: {disease_id}")
+        return True
+    except sqlite3.IntegrityError:
+        logging.warning(f"Duplicate entry: Health indicator '{name}' already exists for disease ID {disease_id}")
+        return False
+    except Exception as e:
+        logging.error(f"Error adding health indicator: {e}")
+        return False
+
+# Получение всех показателей здоровья
+def get_all_health_indicators():
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, disease_id, name, reference_min, reference_max
+            FROM HealthIndicators
+        """)
+        rows = cursor.fetchall()
+        # Преобразуем результат в список словарей
+        indicators = [
+            {
+                "ID": row[0],
+                "Disease ID": row[1],
+                "Name": row[2],
+                "Reference Min": row[3],
+                "Reference Max": row[4]
+            }
+            for row in rows
+        ]
+        return indicators
+
+# Получение показателей здоровья для пациента
+def get_patient_health_indicators(patient_id):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT hi.id AS indicator_id, hi.name AS indicator_name
+            FROM HealthIndicators hi
+            JOIN PatientDiseases pd ON hi.disease_id = pd.disease_id
+            WHERE pd.patient_id = ?
+        """, (patient_id,))
+        rows = cursor.fetchall()
+        indicators = [
+            {
+                "ID": row[0],
+                "Name": row[1]
+            }
+            for row in rows
+        ]
+        return indicators
+
+# Уведомление врача о критическом значении
+def notify_doctor(patient_id, indicator_id, value):
+    st.error(f"Critical value detected for Patient {patient_id}, Indicator {indicator_id}: {value}")
+
+def add_doctor_action(patient_id, action):
+    try:
+        patient_id=int(patient_id)
+        with conn:
+            c.execute("INSERT INTO DoctorActions (patient_id, action, timestamp) VALUES (?, ?, datetime('now','localtime'))", (patient_id, action,))
+            conn.commit()
+            logging.debug(f"Doctor action recorded: Patient {patient_id}, Action '{action}'")
+        return True
+    except Exception as e:
+        logging.error(f"Error adding doctor action: {e}")
+        return False
+
+# Получение действий врача для пациента
+def get_doctor_actions(patient_id):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT action, timestamp
+            FROM DoctorActions
+            WHERE patient_id = ?
+            ORDER BY timestamp DESC
+        """, (patient_id,))
+        rows = cursor.fetchall()
+        # Преобразуем результат в список словарей
+        actions = [
+            {
+                "Action": row[0],
+                "Timestamp": row[1]
+            }
+            for row in rows
+        ]
+        return actions
+
+def generate_report_by_disease(disease_id):
+    with conn:
+        c.execute("""
+        SELECT p.name, h.name, m.value, m.timestamp
+        FROM Monitoring m
+        JOIN Patients p ON m.patient_id = p.id
+        JOIN HealthIndicators h ON m.indicator_id = h.id
+        WHERE h.disease_id = ?
+        """, (disease_id,))
+        return c.fetchall()
+
+def add_disease(name, description):
+    with conn:
+        existing_ids = get_all_disease_ids()
+        # Находим минимальный доступный ID
+        if not existing_ids:
+            next_id = 1  # Если таблица пустая
+        else:
+            # Сортируем ID
+            existing_ids.sort()
+            # Ищем первый "дырявый" ID
+            for i in range(1, max(existing_ids) + 2):
+                if i not in existing_ids:
+                    next_id = i
+                    break
+            else:
+                next_id = max(existing_ids) + 1
+        c.execute("INSERT INTO Diseases (id, name, description) VALUES (?, ?, ?)", (next_id,name, description))
+        conn.commit()
+        logging.debug(f"Disease added: {name}, {description}")
+
+def get_all_diseases():
+    with conn:
+        c.execute("SELECT id, name, description FROM Diseases")
+        rows = c.fetchall()
+        # Преобразуем результат в список словарей
+        diseases = [{"ID": row[0], "Name": row[1], "Description": row[2]} for row in rows]
+        return diseases
+
+def get_all_patients():
+    with conn:
+        c.execute("SELECT id, name, contact_info FROM Patients")
+        rows = c.fetchall()
+        # Преобразуем результат в список словарей
+        patients = [{"ID": row[0], "Name": row[1], "Contact Info": row[2]} for row in rows]
+        return patients
+
+# Получение всех заболеваний для пациента
+def get_patient_diseases(patient_id):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT d.id AS disease_id, d.name AS disease_name, d.description AS disease_description
+            FROM PatientDiseases pd
+            JOIN Diseases d ON pd.disease_id = d.id
+            WHERE pd.patient_id = ?
+        """, (patient_id,))
+        rows = cursor.fetchall()
+        # Преобразуем результат в список словарей
+        diseases = [
+            {
+                "ID": row[0],  # ID заболевания
+                "Name": row[1],  # Название заболевания
+                "Description": row[2]  # Описание заболевания
+            }
+            for row in rows
+        ]
+        return diseases
+
+# Проверка наличия существующей связи
+def check_existing_assignment(patient_id, disease_id):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM PatientDiseases WHERE patient_id = ? AND disease_id = ?", (patient_id, disease_id))
+        return cursor.fetchone() is not None
+
+def assign_disease_to_patient(patient_id, disease_id):
+    if check_existing_assignment(patient_id, disease_id):
+        logging.warning(f"Disease {disease_id} is already assigned to patient {patient_id}")
+        return False  # Связь уже существует
+    try:
+        with conn:
+            c.execute("INSERT INTO PatientDiseases (patient_id, disease_id) VALUES (?, ?)", (patient_id, disease_id))
+            conn.commit()
+            logging.debug(f"Disease {disease_id} assigned to patient {patient_id}")
+        return True
+    except Exception as e:
+        logging.error(f"Error assigning disease to patient: {e}")
+        return False
+
+# Удаление пациента и связанных данных
+def delete_patient(patient_id):
+    try:
+        with conn:
+            # Удаляем связанные записи в Monitoring
+            c.execute("DELETE FROM Monitoring WHERE patient_id = ?", (patient_id,))
+            # Удаляем связанные записи в PatientDiseases
+            c.execute("DELETE FROM PatientDiseases WHERE patient_id = ?", (patient_id,))
+            # Удаляем пациента
+            c.execute("DELETE FROM Patients WHERE id = ?", (patient_id,))
+            conn.commit()
+            logging.debug(f"Patient {patient_id} and related data deleted successfully.")
+        return True
+    except Exception as e:
+        logging.error(f"Error deleting patient {patient_id}: {e}")
+        return False
+
+# Удаление заболевания и связанных данных
+def delete_disease(disease_id):
+    try:
+        with conn:
+            # Удаляем связанные записи в PatientDiseases
+            c.execute("DELETE FROM PatientDiseases WHERE disease_id = ?", (disease_id,))
+            # Удаляем заболевание
+            c.execute("DELETE FROM Diseases WHERE id = ?", (disease_id,))
+            conn.commit()
+            logging.debug(f"Disease {disease_id} and related data deleted successfully.")
+        return True
+    except Exception as e:
+        logging.error(f"Error deleting disease {disease_id}: {e}")
+        return False
+
+# Удаление показателя здоровья и связанных данных
+def delete_health_indicator(indicator_id):
+    try:
+        with conn:
+            # Удаляем связанные записи в Monitoring
+            c.execute("DELETE FROM Monitoring WHERE indicator_id = ?", (indicator_id,))
+            # Удаляем показатель здоровья
+            c.execute("DELETE FROM HealthIndicators WHERE id = ?", (indicator_id,))
+            conn.commit()
+            logging.debug(f"Health indicator {indicator_id} and related data deleted successfully.")
+        return True
+    except Exception as e:
+        logging.error(f"Error deleting health indicator {indicator_id}: {e}")
+        return False
+
+# Добавление нового плана мониторинга
+def add_monitoring_schedule(patient_id, indicator_id, frequency,interval_days, start_date, end_date, next_monitoring_date):
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO MonitoringSchedule (
+                    patient_id, indicator_id, frequency, interval_days, start_date, end_date, next_monitoring_date
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (patient_id, indicator_id, frequency, interval_days, start_date, end_date, next_monitoring_date))
+            conn.commit()
+            logging.debug(f"Monitoring schedule added: Patient {patient_id}, Indicator {indicator_id}")
+        return True
+    except Exception as e:
+        logging.error(f"Error adding monitoring schedule: {e}")
+        return False
+
+# Обновление даты следующего мониторинга
+def update_next_monitoring_date(schedule_id):
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            # Получаем текущий интервал
+            cursor.execute("SELECT interval_days, next_monitoring_date FROM MonitoringSchedule WHERE id = ?", (schedule_id,))
+            row = cursor.fetchone()
+            if row:
+                interval_days, current_date = row
+                next_date = current_date + timedelta(days=interval_days)
+                cursor.execute("UPDATE MonitoringSchedule SET next_monitoring_date = ? WHERE id = ?", (next_date, schedule_id))
+                conn.commit()
+                logging.debug(f"Next monitoring date updated for schedule {schedule_id}")
+        return True
+    except Exception as e:
+        logging.error(f"Error updating next monitoring date: {e}")
+        return False
+
+# Получение планируемых мониторингов с учетом статуса
+def get_planned_monitoring():
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT ms.id, p.name AS patient_name, hi.name AS indicator_name, ms.frequency, ms.interval_days, ms.next_monitoring_date, ms.status
+            FROM MonitoringSchedule ms
+            JOIN Patients p ON ms.patient_id = p.id
+            JOIN HealthIndicators hi ON ms.indicator_id = hi.id
+        """)
+        rows = cursor.fetchall()
+        planned_monitoring = [
+            {
+                "ID": row[0],
+                "Patient Name": row[1],
+                "Indicator Name": row[2],
+                "Frequency": row[3],
+                "Interval (Days)": row[4],
+                "Next Monitoring Date": row[5],
+                "Status": row[6]
+            }
+            for row in rows
+        ]
+        return planned_monitoring
+
+# Обновление статуса мониторинга на "Completed"
+def mark_monitoring_as_completed(schedule_id):
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE MonitoringSchedule SET status = 'Completed' WHERE id = ?", (schedule_id,))
+            conn.commit()
+            logging.debug(f"Monitoring schedule {schedule_id} marked as completed.")
+        return True
+    except Exception as e:
+        logging.error(f"Error marking monitoring as completed: {e}")
+        return False
+
+
+# Добавление данных из голосового мониторинга
+def add_voice_monitoring(patient_id, indicator_id, raw_response, parsed_value):
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO VoiceMonitoring (patient_id, indicator_id, raw_response, parsed_value)
+                VALUES (?, ?, ?, ?)
+            """, (patient_id, indicator_id, raw_response, parsed_value))
+            conn.commit()
+            logging.debug(f"Voice monitoring data added for Patient {patient_id}, Indicator {indicator_id}")
+        return True
+    except Exception as e:
+        logging.error(f"Error adding voice monitoring data: {e}")
+        return False
+
+# Формирование рекомендаций для врача
+def generate_doctor_recommendations(patient_id):
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            # Получаем последние значения показателей здоровья
+            cursor.execute("""
+                SELECT hi.name AS indicator_name, m.value AS monitoring_value, hi.reference_min, hi.reference_max
+                FROM Monitoring m
+                JOIN HealthIndicators hi ON m.indicator_id = hi.id
+                WHERE m.patient_id = ?
+                UNION
+                SELECT hi.name AS indicator_name, vm.parsed_value AS monitoring_value, hi.reference_min, hi.reference_max
+                FROM VoiceMonitoring vm
+                JOIN HealthIndicators hi ON vm.indicator_id = hi.id
+                WHERE vm.patient_id = ?
+            """, (patient_id,patient_id))
+            rows = cursor.fetchall()
+
+            recommendations = []
+            for row in rows:
+                indicator_name, value, ref_min, ref_max = row
+                if value < ref_min or value > ref_max:
+                    recommendations.append(f"Indicator {indicator_name}: Out of range ({value}). Immediate attention required.")
+            return recommendations
+    except Exception as e:
+        logging.error(f"Error generating doctor recommendations: {e}")
+        return []
+
+# Анализ рисков на основе данных мониторинга
+def analyze_risks(patient_id):
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Получаем последние значения показателей здоровья
+            cursor.execute("""
+                SELECT hi.name AS indicator_name, vm.parsed_value, hi.reference_min, hi.reference_max
+                FROM VoiceMonitoring vm
+                JOIN HealthIndicators hi ON vm.indicator_id = hi.id
+                WHERE vm.patient_id = ?
+                ORDER BY vm.timestamp DESC
+            """, (patient_id,))
+            rows = cursor.fetchall()
+
+            risks = []
+            for row in rows:
+                indicator_name, value, ref_min, ref_max = row
+                if value < ref_min or value > ref_max:
+                    risks.append(f"Risk detected for {indicator_name}: Value {value} out of range ({ref_min}-{ref_max}).")
+            return risks
+    except Exception as e:
+        logging.error(f"Error analyzing risks: {e}")
+        return []
+
+# Формирование аналитической отчетности
+def generate_analytics_report():
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT d.name AS disease_name, COUNT(vm.id) AS monitoring_count,
+                   SUM(CASE WHEN vm.parsed_value < hi.reference_min OR vm.parsed_value > hi.reference_max THEN 1 ELSE 0 END) AS out_of_range_count
+            FROM VoiceMonitoring vm
+            JOIN HealthIndicators hi ON vm.indicator_id = hi.id
+            JOIN PatientDiseases pd ON vm.patient_id = pd.patient_id
+            JOIN Diseases d ON pd.disease_id = d.id
+            GROUP BY d.name
+        """)
+        rows = cursor.fetchall()
+        report = [
+            {
+                "Disease Name": row[0],
+                "Monitoring Count": row[1],
+                "Out of Range Count": row[2]
+            }
+            for row in rows
+        ]
+        return report
+
+# Добавление нового вопроса
+def add_question(indicator_id, question_text, example_response):
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO Questions (indicator_id, question_text, example_response)
+                VALUES (?, ?, ?)
+            """, (indicator_id, question_text, example_response))
+            conn.commit()
+            logging.debug(f"Question added for Indicator ID {indicator_id}")
+        return True
+    except Exception as e:
+        logging.error(f"Error adding question: {e}")
+        return False
+
+# Получение всех вопросов
+def get_all_questions():
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT q.id, hi.name AS indicator_name, q.question_text, q.example_response
+            FROM Questions q
+            JOIN HealthIndicators hi ON q.indicator_id = hi.id
+        """)
+        rows = cursor.fetchall()
+        questions = [
+            {
+                "ID": row[0],
+                "Indicator Name": row[1],
+                "Question Text": row[2],
+                "Example Response": row[3]
+            }
+            for row in rows
+        ]
+        return questions
+
+# Редактирование вопроса
+def update_question(question_id, new_question_text, new_example_response):
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE Questions
+                SET question_text = ?, example_response = ?
+                WHERE id = ?
+            """, (new_question_text, new_example_response, question_id))
+            conn.commit()
+            logging.debug(f"Question updated: ID {question_id}")
+        return True
+    except Exception as e:
+        logging.error(f"Error updating question: {e}")
+        return False
+
+# Удаление вопроса
+def delete_question(question_id):
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM Questions WHERE id = ?", (question_id,))
+            conn.commit()
+            logging.debug(f"Question deleted: ID {question_id}")
+        return True
+    except Exception as e:
+        logging.error(f"Error deleting question: {e}")
+        return False
+
+# Получение периода хранения записей
+def get_data_retention_period():
+    with conn:
+        c.execute("SELECT setting_value FROM Settings WHERE setting_name = 'data_retention_period'")
+        row = c.fetchone()
+        if row:
+            return int(row[0])
+        return 30  # Значение по умолчанию (30 дней)
+
+# Обновление периода хранения записей
+def update_data_retention_period(days):
+    try:
+        with conn:
+            c.execute("""
+                INSERT OR REPLACE INTO Settings (setting_name, setting_value)
+                VALUES ('data_retention_period', ?)
+            """, (days,))
+            conn.commit()
+            logging.debug(f"Data retention period updated to {days} days")
+        return True
+    except Exception as e:
+        logging.error(f"Error updating data retention period: {e}")
+        return False
+
+# Удаление старых записей
+def delete_old_records():
+    try:
+        retention_period = get_data_retention_period()
+        cutoff_date = datetime.now() - timedelta(days=retention_period)
+
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM VoiceMonitoring WHERE timestamp < ?", (cutoff_date,))
+            conn.commit()
+            logging.debug(f"Deleted records older than {cutoff_date}")
+        return True
+    except Exception as e:
+        logging.error(f"Error deleting old records: {e}")
+        return False
+
+
+
+
+
+
+
+
+
+
+
+func.py
+import streamlit as st
+import plotly as px
+from database import get_monitoring_data,generate_report_by_disease,conn,c
+
+def schedule_monitoring(patient_id, indicator_id, frequency):
+    # Здесь можно добавить логику для планирования мониторинга
+    st.write(f"Monitoring scheduled for patient {patient_id} with frequency {frequency}")
+
+# Получение отчета по пациентам
+def get_patient_report():
+    with conn:
+        c.execute("""
+            SELECT p.name AS patient_name, hi.name AS indicator_name, COUNT(m.id) AS monitoring_count,
+                   AVG(m.value) AS avg_value, MIN(m.value) AS min_value, MAX(m.value) AS max_value
+            FROM Monitoring m
+            JOIN Patients p ON m.patient_id = p.id
+            JOIN HealthIndicators hi ON m.indicator_id = hi.id
+            GROUP BY p.name, hi.name
+        """)
+        rows = c.fetchall()
+        report = [
+            {
+                "Patient Name": row[0],
+                "Indicator Name": row[1],
+                "Monitoring Count": row[2],
+                "Average Value": row[3],
+                "Min Value": row[4],
+                "Max Value": row[5]
+            }
+            for row in rows
+        ]
+        return report
+
+# Получение отчета по заболеваниям
+def get_disease_report():
+    with conn:
+        c.execute("""
+            SELECT d.name AS disease_name, hi.name AS indicator_name, COUNT(m.id) AS monitoring_count,
+                   AVG(m.value) AS avg_value, MIN(m.value) AS min_value, MAX(m.value) AS max_value
+            FROM Monitoring m
+            JOIN HealthIndicators hi ON m.indicator_id = hi.id
+            JOIN PatientDiseases pd ON m.patient_id = pd.patient_id
+            JOIN Diseases d ON pd.disease_id = d.id
+            GROUP BY d.name, hi.name
+        """)
+        rows = c.fetchall()
+        report = [
+            {
+                "Disease Name": row[0],
+                "Indicator Name": row[1],
+                "Monitoring Count": row[2],
+                "Average Value": row[3],
+                "Min Value": row[4],
+                "Max Value": row[5]
+            }
+            for row in rows
+        ]
+        return report
+
+# Получение отчета по показателям здоровья
+def get_indicator_report():
+    with conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT hi.name AS indicator_name, COUNT(m.id) AS monitoring_count,
+                   AVG(m.value) AS avg_value, MIN(m.value) AS min_value, MAX(m.value) AS max_value
+            FROM Monitoring m
+            JOIN HealthIndicators hi ON m.indicator_id = hi.id
+            GROUP BY hi.name
+        """)
+        rows = cursor.fetchall()
+        report = [
+            {
+                "Indicator Name": row[0],
+                "Monitoring Count": row[1],
+                "Average Value": row[2],
+                "Min Value": row[3],
+                "Max Value": row[4]
+            }
+            for row in rows
+        ]
+        return report
+
+
+
+
+
+# voice_bot.py
+from transformers import SpeechT5Processor, SpeechT5ForTextToSpeech
+#import torch
+
+processor = SpeechT5Processor.from_pretrained("microsoft/speecht5_tts")
+model = SpeechT5ForTextToSpeech.from_pretrained("microsoft/speecht5_tts")
+
+def text_to_speech(text):
+    inputs = processor(text=text, return_tensors="pt")
+    speech = model.generate_speech(inputs["input_ids"])
+    return speech.numpy()
+
+
+
+cleanup.py
+from database import delete_old_records
+
+if __name__ == "__main__":
+    delete_old_records()
